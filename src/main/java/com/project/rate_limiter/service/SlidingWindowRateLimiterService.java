@@ -56,7 +56,7 @@ public class SlidingWindowRateLimiterService {
 		}
 		
 
-		return new RateLimiterDecision(false, remaining, resetInMs, resetInMs);
+		return new RateLimiterDecision(true, remaining, resetInMs, resetInMs);
 	}
 	
 	public boolean isAllowed(String user) {
