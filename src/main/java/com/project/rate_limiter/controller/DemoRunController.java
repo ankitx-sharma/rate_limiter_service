@@ -19,7 +19,7 @@ import org.springframework.web.client.RestTemplate;
 import com.project.rate_limiter.controller.dto.DemoEvent;
 import com.project.rate_limiter.controller.dto.DemoRunRequest;
 import com.project.rate_limiter.controller.dto.DemoRunResponse;
-import com.project.rate_limiter.helper.NotesHelper;
+import com.project.rate_limiter.helper.ResponseTextHelper;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,14 +57,14 @@ public class DemoRunController {
 		long start = System.currentTimeMillis();
 		List<DemoEvent> timeline = new ArrayList<>();
 		
-		Map<String, Object> notes = NotesHelper.baseNotes(scenario, alg, userId, limit, start, refillRate);
+		Map<String, Object> config = ResponseTextHelper.buildConfig(alg, limit, start, refillRate);
 		
-		runFixedWindowBoundaryBurst(alg, scenario, userId, start, timeline, notes);
+		runFixedWindowBoundaryBurst(alg, scenario, userId, start, timeline);
 		
 		int allowed = (int) timeline.stream().filter(e -> e.status() == 200).count();
 		int blocked = (int) timeline.stream().filter(e -> e.status() == 429).count();
 		
-		return new DemoRunResponse(scenario, alg, userId, notes, allowed, blocked, timeline);
+		return new DemoRunResponse(alg, allowed, blocked, config, timeline);
 	}
 	
 	@Operation(
@@ -80,14 +80,14 @@ public class DemoRunController {
 		long start = System.currentTimeMillis();
 		List<DemoEvent> timeline = new ArrayList<>();
 		
-		Map<String, Object> notes = NotesHelper.baseNotes(scenario, alg, userId, limit, start, refillRate);
+		Map<String, Object> config = ResponseTextHelper.buildConfig(alg, limit, start, refillRate);
 		
-		runSlidingWindowSmooth(alg, scenario, userId, start, timeline, notes);
+		runSlidingWindowSmooth(alg, scenario, userId, start, timeline);
 		
 		int allowed = (int) timeline.stream().filter(e -> e.status() == 200).count();
 		int blocked = (int) timeline.stream().filter(e -> e.status() == 429).count();
 		
-		return new DemoRunResponse(scenario, alg, userId, notes, allowed, blocked, timeline);
+		return new DemoRunResponse(alg, allowed, blocked, config, timeline);
 	}
 	
 	@Operation(
@@ -103,18 +103,18 @@ public class DemoRunController {
 		long start = System.currentTimeMillis();
 		List<DemoEvent> timeline = new ArrayList<>();
 		
-		Map<String, Object> notes = NotesHelper.baseNotes(scenario, alg, userId, limit, start, refillRate);
+		Map<String, Object> config = ResponseTextHelper.buildConfig(alg, limit, start, refillRate);
 		
-		runTokenBucketBurstRefill(alg, scenario, userId, start, timeline, notes);
+		runTokenBucketBurstRefill(alg, scenario, userId, start, timeline);
 		
 		int allowed = (int) timeline.stream().filter(e -> e.status() == 200).count();
 		int blocked = (int) timeline.stream().filter(e -> e.status() == 429).count();
 		
-		return new DemoRunResponse(scenario, alg, userId, notes, allowed, blocked, timeline);
+		return new DemoRunResponse(alg, allowed, blocked, config, timeline);
 	}
 	
-	private void runFixedWindowBoundaryBurst(String alg, String scenario, String userId, long start, 
-			List<DemoEvent> timeline, Map<String, Object> notes) throws InterruptedException {
+	private void runFixedWindowBoundaryBurst(String alg, String scenario, String userId, 
+			long start,	List<DemoEvent> timeline) throws InterruptedException {
 		
 		callCheck(alg, userId, start, timeline, 1);
 		
@@ -129,18 +129,14 @@ public class DemoRunController {
 		//short delay at boundary
 		Thread.sleep(250);
 		
-		timeline.add(new DemoEvent(" Burst Call triggered - next calls should be blocked ", 0, 0, 0, 0, 0, 0));
-		
 		//Burst call again
 		for(int i=0; i<limit; i++) {
 			callCheck(alg, userId, start, timeline, timeline.size() + 1);
 		}
-		
-		NotesHelper.enrichNotesForScenario(notes, scenario);
 	}
 	
-	private void runSlidingWindowSmooth(String alg, String scenario, String userId, long start,
-			List<DemoEvent> timeline, Map<String, Object> notes) throws InterruptedException {
+	private void runSlidingWindowSmooth(String alg, String scenario, String userId, 
+			long start,	List<DemoEvent> timeline) throws InterruptedException {
 		
 		for(int i=0; i<limit; i++) {
 			callCheck(alg, userId, start, timeline, i+1);
@@ -156,12 +152,10 @@ public class DemoRunController {
 			callCheck(alg, userId, start, timeline, timeline.size()+1);
 			Thread.sleep(150);
 		}
-		
-		NotesHelper.enrichNotesForScenario(notes, scenario);
 	}
 	
-	private void runTokenBucketBurstRefill(String alg, String scenario, String userId, long start,
-			List<DemoEvent> timeline, Map<String, Object> notes) throws InterruptedException {
+	private void runTokenBucketBurstRefill(String alg, String scenario, String userId, 
+			long start,	List<DemoEvent> timeline) throws InterruptedException {
 		
 		int burst = limit + 3;
 		
@@ -169,14 +163,10 @@ public class DemoRunController {
 			callCheck(alg, userId, start, timeline, i+1);
 		}
 		
-		timeline.add(new DemoEvent(" Burst Call triggered - next calls should be blocked ", 0, 0, 0, 0, 0, 0));
-		
 		for(int i=0; i<5; i++) {
 			Thread.sleep(1000);
 			callCheck(alg, userId, start, timeline, timeline.size()+1);
 		}
-		
-		NotesHelper.enrichNotesForScenario(notes, scenario);
 	}
 	
 	private void callCheck(String alg, String userId, long start, 
@@ -207,13 +197,10 @@ public class DemoRunController {
 			resultHeaders = new HttpHeaders();
 		}
 		
-		long tMs = System.currentTimeMillis() - start;
-		
 		long remaining = parseLong(resultHeaders.getFirst("X-RateLimit-Remaining"));
 		long retryAfterMs = parseLong(resultHeaders.getFirst("X-RateLimit-RetryAfter-Ms"));
-		long resetInMs = parseLong(resultHeaders.getFirst("X-RateLimit-ResetIn-Ms"));
 		
-		timeline.add(new DemoEvent("run", index, tMs, status, remaining, retryAfterMs, resetInMs));
+		timeline.add(new DemoEvent(status, remaining, retryAfterMs));
 	}
 	
 	private long parseLong(String v) {
