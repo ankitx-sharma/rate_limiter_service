@@ -41,8 +41,8 @@ jobs:
       - name: Build and Push App
         uses: docker/build-push-action@v6
         with:
-          context: rate_limiter_service
-          file: rate_limiter_service/Dockerfile
+          context: .
+          file: Dockerfile
           push: true
           tags: ${{ steps.app.outputs.tags }}
           labels: ${{ steps.app.outputs.labels }}
